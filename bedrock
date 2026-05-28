@@ -1,0 +1,12 @@
+Before raising the new case, I would like to request a short call (15-20 minutes) to walk through the issue end-to-end.
+
+The specific point I would like to discuss further is this:
+At the time of the failure, the Opus 4.7 model card showed ap-southeast-4 (Melbourne) as In-Region:
+No. Despite this, the global inference profile routed requests from our 2 affected accounts to Melbourne as the destination region, where the use case form gate was enforced and invocation failed. Following the AWS documentation update - which added In-Region: Yes for Melbourne and Geo: Yes for Sydney - the same invocations succeeded without any action on our side.
+This suggests that the global inference profile may have been routing to a destination region where the model was not yet In-Region available, which would explain why those 2 accounts hit a use case form requirement that other accounts (routed to us-east-1) did not. 
+
+
+
+Attached are the two regional availability snapshots (at the time of failure and current) for reference.
+Once we have alignment on this, I will raise the formal case from one of the affected accounts with the full technical detail.
+Please let me know a couple of time slots that work for you, and I will coordinate the call.
