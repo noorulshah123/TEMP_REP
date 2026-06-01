@@ -1,0 +1,36 @@
+1. SageMaker Custom Image Patching
+========================================================
+
+Summary:
+Patched the SageMaker custom image with a major base image upgrade (sagemaker-distribution 3.8.1-cpu → 4.1.0-cpu) and remediated critical and high severity vulnerabilities identified in the Prisma scan report. Work included upgrading the SageMaker Python SDK from v2 to v3 (a major release with breaking changes), bumping mlflow from 2.x to 3.x, code-server from 4.100 to a patched release, removing unused R packages contributing to CVE surface, and resolving multiple build/runtime issues introduced by the Ubuntu 22.04 → 24.04 base image change (libexpat ABI mismatch affecting R-to-Python reticulate bridge, package availability changes, dependency resolution conflicts).
+
+Benefit / Client impact:
+- Closed critical and high severity findings from the Prisma scan, restoring compliance posture.
+- Refreshed framework versions (PyTorch, TensorFlow, Keras, boto3) bringing users current with the latest stable ML tooling.
+- Documented breaking changes and migration guidance for SageMaker users to ensure scheduled jobs and notebooks continue to function after the cutover.
+- Established a repeatable patching workflow that can be applied for future monthly CVE remediation cycles.
+
+========================================================
+2. Snowflake Cortex Agent Evaluation
+========================================================
+
+Summary:
+Designed and implemented the CI/CD setup, evaluation dataset, evaluation scripts, and quality gates for the Snowflake Cortex agent. Work included building the dataset of test cases against expected outcomes, scripting the evaluation runs, integrating the evaluation into the CI/CD pipeline as an automated gate, and surfacing results to the team for review.
+
+Benefit / Client impact:
+- Enabled automated, repeatable quality assessment of the Cortex agent on every change, replacing manual ad-hoc testing.
+- Provided objective metrics for agent quality, giving the team a baseline to measure regressions and improvements against.
+- Reduced risk of releasing agent changes that degrade behavior, by gating deployments on evaluation results.
+- Faster iteration on agent improvements, since the evaluation feedback loop is now automated.
+
+========================================================
+3. Terraform Plugin Crash Resolution
+========================================================
+
+Summary:
+Investigated and resolved a recurring crash in the Terraform plugin that was blocking infrastructure changes. Identified the root cause, applied the fix, and verified stable operation across subsequent runs.
+
+Benefit / Client impact:
+- Unblocked infrastructure deployments that were previously failing due to the plugin crash.
+- Restored reliability of the Terraform-based provisioning workflow for the team.
+- Avoided manual workarounds and reduced operational toil for engineers running Terraform plans/applies.
