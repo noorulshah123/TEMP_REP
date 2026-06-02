@@ -214,3 +214,34 @@ smoke-test-soci:
     - if: $CI_COMMIT_BRANCH == "main"
 
 
+create-soci-index:
+  stage: soci-index
+  image: amazonlinux:2023
+  variables:
+    FINCH_VERSION: "1.4.0"
+  before_script:
+    # Install tools
+    - dnf install -y awscli jq tar gzip curl ca-certificates --quiet
+    - |
+      curl -fsSL "https://github.com/runfinch/finch/releases/download/v${FINCH_VERSION}/Finch-v${FINCH_VERSION}-Linux-x86_64.tar.gz" \
+        -o /tmp/finch.tar.gz
+      tar -xzf /tmp/finch.tar.gz -C /usr/local
+      ln -sf /usr/local/bin/finch /usr/bin/finch
+      finch --version
+    # AWS auth (OIDC from earlier)
+    - export AWS_WEB_IDENTITY_TOKEN_FILE=$(mktemp)
+    - echo "${GITLAB_OIDC_TOKEN}" > "${AWS_WEB_IDENTITY_TOKEN_FILE}"
+    - export AWS_ROLE_ARN="${AWS_ROLE_ARN_FOR_CI}"
+    - export AWS_ROLE_SESSION_NAME="GitLabCI-${CI_PIPELINE_ID}"
+    - aws sts get-caller-identity
+  id_tokens:
+    GITLAB_OIDC_TOKEN:
+      aud: https://gitlab.com
+  script:
+    # actual SOCI conversion
+    - aws ecr get-login-password --region ${AWS_REGION} | finch login --username AWS --password-stdin ${ECR_REGISTRY}
+    - finch pull ${ECR_REGISTRY}/${REPOSITORY_NAME}:${ORIGINAL_IMAGE_TAG}
+    - finch image convert --soci ${ECR_REGISTRY}/${REPOSITORY_NAME}:${ORIGINAL_IMAGE_TAG} ${ECR_REGISTRY}/${REPOSITORY_NAME}:${SOCI_IMAGE_TAG}
+    - finch push --platform linux/amd64 ${ECR_REGISTRY}/${REPOSITORY_NAME}:${SOCI_IMAGE_TAG}
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
