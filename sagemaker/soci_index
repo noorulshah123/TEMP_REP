@@ -1,0 +1,216 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "EcrSociPush",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:GetAuthorizationToken",
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:BatchGetImage",
+        "ecr:PutImage",
+        "ecr:InitiateLayerUpload",
+        "ecr:UploadLayerPart",
+        "ecr:CompleteLayerUpload",
+        "ecr:DescribeImages"
+      ],
+      "Resource": "arn:aws:ecr:us-east-1:ACCOUNT_ID:repository/your-sagemaker-image"
+    },
+    {
+      "Sid": "SageMakerImageMgmt",
+      "Effect": "Allow",
+      "Action": [
+        "sagemaker:CreateImage",
+        "sagemaker:CreateImageVersion",
+        "sagemaker:UpdateImage",
+        "sagemaker:DescribeImage",
+        "sagemaker:DescribeImageVersion",
+        "sagemaker:ListImageVersions",
+        "sagemaker:CreateAppImageConfig",
+        "sagemaker:UpdateAppImageConfig",
+        "sagemaker:DescribeAppImageConfig"
+      ],
+      "Resource": "*"
+    }
+  ]
+}
+## .gitlab-ci.yml
+variables:
+  ACCOUNT_ID: "111122223333"           # Your AWS account
+  REGION: "us-east-1"
+  REPOSITORY_NAME: "your-sagemaker-image"
+  ORIGINAL_IMAGE_TAG: "latest"
+  SOCI_IMAGE_TAG: "latest-soci"        # Convention: -soci suffix
+
+stages:
+  - build         # Your existing image build job
+  - soci-index    # NEW: SOCI index creation
+  - deploy        # Your existing SageMaker registration
+
+create-soci-index:
+  stage: soci-index
+  # Use a runner with root access and ability to install system packages
+  tags:
+    - abc-cloud-aws  # Adjust to your runner tag
+  image: amazonlinux:2023
+  before_script:
+    - dnf install -y awscli jq containerd nerdctl soci-snapshotter
+    - systemctl start soci-snapshotter
+    - systemctl restart containerd
+  script:
+    # Variables already set globally; redeclare for clarity
+    - REGISTRY="$ACCOUNT_ID.dkr.ecr.$REGION.amazonaws.com"
+    - export AWS_REGION=$REGION
+    
+    # Authenticate to ECR
+    - |
+      REGISTRY_PASSWORD=$(aws ecr get-login-password --region $AWS_REGION)
+      echo $REGISTRY_PASSWORD | nerdctl login -u AWS --password-stdin $REGISTRY
+    
+    # Pull the original image that the previous build stage pushed
+    - nerdctl pull $REGISTRY/$REPOSITORY_NAME:$ORIGINAL_IMAGE_TAG
+    
+    # Create the SOCI index
+    - |
+      nerdctl image convert --soci \
+        $REGISTRY/$REPOSITORY_NAME:$ORIGINAL_IMAGE_TAG \
+        $REGISTRY/$REPOSITORY_NAME:$SOCI_IMAGE_TAG
+    
+    # Push the SOCI-indexed manifest back to ECR
+    - nerdctl push --platform linux/amd64 $REGISTRY/$REPOSITORY_NAME:$SOCI_IMAGE_TAG
+    
+    # Verify the artifact was pushed
+    - |
+      aws ecr describe-images \
+        --repository-name $REPOSITORY_NAME \
+        --image-ids imageTag=$SOCI_IMAGE_TAG \
+        --region $REGION
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+
+variables:
+  AWS_REGION: "us-east-1"
+  AWS_ACCOUNT_ID: "111122223333"
+  ECR_REGISTRY: "${AWS_ACCOUNT_ID}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+  REPOSITORY_NAME: "your-sagemaker-image"
+  ORIGINAL_IMAGE_TAG: "${CI_COMMIT_SHORT_SHA}"
+  SOCI_IMAGE_TAG: "${CI_COMMIT_SHORT_SHA}-soci"
+  SAGEMAKER_IMAGE_NAME: "your-sagemaker-image"
+  SAGEMAKER_ROLE_ARN: "arn:aws:iam::${AWS_ACCOUNT_ID}:role/SageMakerExecutionRole"
+  # GitLab OIDC -> AWS role assumption
+  AWS_ROLE_ARN_FOR_CI: "arn:aws:iam::${AWS_ACCOUNT_ID}:role/GitLabCIRole"
+
+## https://docs.aws.amazon.com/sagemaker/latest/dg/soci-indexing-example-integrate-studio.html
+https://aws.amazon.com/blogs/machine-learning/introducing-soci-indexing-for-amazon-sagemaker-studio-faster-container-startup-times-for-ai-ml-workloads/
+
+https://docs.aws.amazon.com/sagemaker/latest/dg/soci-indexing-example-create-indexes.html
+
+FROM amazonlinux:2023
+
+# Install dependencies
+RUN dnf install -y \
+        awscli \
+        jq \
+        git \
+        ca-certificates \
+        tar \
+        gzip \
+        which \
+    && dnf clean all
+
+# Install Finch
+# Check the latest release at https://github.com/runfinch/finch/releases
+ARG FINCH_VERSION="1.4.0"
+RUN curl -L https://github.com/runfinch/finch/releases/download/v${FINCH_VERSION}/Finch-v${FINCH_VERSION}-Linux-x86_64.tar.gz \
+        -o /tmp/finch.tar.gz \
+    && tar -xzf /tmp/finch.tar.gz -C /usr/local \
+    && rm /tmp/finch.tar.gz \
+    && ln -sf /usr/local/bin/finch /usr/bin/finch \
+    && finch --version
+
+ENTRYPOINT ["/bin/bash"]
+
+
+##
+
+create-soci-index:
+  stage: soci-index
+  image: amazonlinux:2023
+  before_script:
+    - dnf install -y awscli jq tar gzip which curl
+    - |
+      FINCH_VERSION="1.4.0"
+      curl -L https://github.com/runfinch/finch/releases/download/v${FINCH_VERSION}/Finch-v${FINCH_VERSION}-Linux-x86_64.tar.gz \
+        -o /tmp/finch.tar.gz
+      tar -xzf /tmp/finch.tar.gz -C /usr/local
+      ln -sf /usr/local/bin/finch /usr/bin/finch
+      finch --version
+  script:
+    # the actual SOCI conversion
+    - finch login ...
+    - finch pull ...
+    - finch image convert --soci ...
+    - finch push ...
+
+
+create-soci-index:
+  stage: soci-index
+  image: your-registry/gitlab-soci-runner:1.0  # the Finch runner image
+  <<: *aws-oidc-auth
+  script:
+    - echo "=== Authenticating to ECR ==="
+    - aws ecr get-login-password --region ${AWS_REGION} | \
+        finch login --username AWS --password-stdin ${ECR_REGISTRY}
+    
+    - echo "=== Pulling original image ==="
+    - finch pull ${ECR_REGISTRY}/${REPOSITORY_NAME}:${ORIGINAL_IMAGE_TAG}
+    
+    - echo "=== Creating SOCI index ==="
+    - |
+      finch image convert --soci \
+        ${ECR_REGISTRY}/${REPOSITORY_NAME}:${ORIGINAL_IMAGE_TAG} \
+        ${ECR_REGISTRY}/${REPOSITORY_NAME}:${SOCI_IMAGE_TAG}
+    
+    - echo "=== Pushing SOCI-indexed manifest ==="
+    - finch push --platform linux/amd64 \
+        ${ECR_REGISTRY}/${REPOSITORY_NAME}:${SOCI_IMAGE_TAG}
+    
+    - echo "=== Verifying SOCI index in ECR ==="
+    - |
+      aws ecr describe-images \
+        --repository-name ${REPOSITORY_NAME} \
+        --image-ids imageTag=${SOCI_IMAGE_TAG} \
+        --region ${AWS_REGION} \
+        --output json
+  needs:
+    - build-image
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+
+
+smoke-test-soci:
+  stage: register
+  image: amazon/aws-cli:latest
+  <<: *aws-oidc-auth
+  script:
+    - echo "=== Verifying SOCI index manifest mediaType ==="
+    - |
+      MANIFEST=$(aws ecr batch-get-image \
+        --repository-name ${REPOSITORY_NAME} \
+        --image-ids imageTag=${SOCI_IMAGE_TAG} \
+        --region ${AWS_REGION} \
+        --query 'images[0].imageManifest' \
+        --output text)
+      
+      echo "${MANIFEST}" | grep -q "vnd.oci.image.index" || \
+        (echo "ERROR: SOCI tag does not contain expected index manifest" && exit 1)
+      
+      echo "${MANIFEST}" | jq '.manifests[] | {mediaType, platform}'
+      echo "SOCI verification passed"
+  needs:
+    - create-soci-index
+  rules:
+    - if: $CI_COMMIT_BRANCH == "main"
+
+
