@@ -1,0 +1,44 @@
+# Rootless containerd + nerdctl image for GitLab CI
+# Works WITHOUT privileged = true on the runner (uses user namespaces).
+FROM ubuntu:22.04
+
+ARG NERDCTL_VERSION=2.3.1
+
+# uidmap provides the setuid newuidmap/newgidmap needed for subuid mappings
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        ca-certificates curl git iproute2 iptables uidmap \
+    && rm -rf /var/lib/apt/lists/*
+
+# nerdctl-full bundles: containerd, runc, BuildKit, RootlessKit,
+# fuse-overlayfs (+ its containerd snapshotter plugin) and CNI plugins.
+RUN ARCH="$(dpkg --print-architecture)" && \
+    curl -fsSL "https://github.com/containerd/nerdctl/releases/download/v${NERDCTL_VERSION}/nerdctl-full-${NERDCTL_VERSION}-linux-${ARCH}.tar.gz" \
+    | tar -C /usr/local -xz
+
+# soci CLI: required by `nerdctl image convert --soci` / `nerdctl push --soci`
+# (nerdctl execs the `soci` binary; it is NOT part of the nerdctl-full bundle)
+ARG SOCI_VERSION=0.13.0
+RUN ARCH="$(dpkg --print-architecture)" && \
+    curl -fsSL "https://github.com/awslabs/soci-snapshotter/releases/download/v${SOCI_VERSION}/soci-snapshotter-${SOCI_VERSION}-linux-${ARCH}.tar.gz" \
+    | tar -C /usr/local/bin -xz soci
+
+# Non-root user with subordinate UID/GID ranges (required for rootless)
+RUN useradd -m -u 1000 -s /bin/bash build && \
+    echo 'build:100000:65536' >  /etc/subuid && \
+    echo 'build:100000:65536' >  /etc/subgid && \
+    mkdir -p /run/user/1000 && \
+    chown build:build /run/user/1000 && chmod 700 /run/user/1000
+
+COPY rootless-init.sh /usr/local/bin/rootless-init.sh
+RUN chmod 755 /usr/local/bin/rootless-init.sh
+
+USER build
+WORKDIR /home/build
+ENV HOME=/home/build \
+    USER=build \
+    XDG_RUNTIME_DIR=/run/user/1000 \
+    BUILDKIT_HOST=unix:///run/user/1000/buildkit/buildkitd.sock
+
+# Starts rootless containerd + buildkitd, then execs the CI job command
+ENTRYPOINT ["/usr/local/bin/rootless-init.sh"]
+CMD ["bash"]
