@@ -1,0 +1,19 @@
+# Example job using the rootless nerdctl image (no privileged runner needed).
+# First build & push the image from the Dockerfile in this folder, e.g.:
+#   docker build -t registry.example.com/group/nerdctl-rootless:latest .
+#   docker push registry.example.com/group/nerdctl-rootless:latest
+
+build-and-push:
+  image: registry.example.com/group/nerdctl-rootless:latest
+  variables:
+    IMAGE_TAG: $CI_REGISTRY_IMAGE:$CI_COMMIT_SHORT_SHA
+  before_script:
+    # Daemons normally start via the image ENTRYPOINT; sourcing this is a
+    # safe no-op then, and covers runners that override entrypoints.
+    - source /usr/local/bin/rootless-init.sh
+    - nerdctl login -u "$CI_REGISTRY_USER" -p "$CI_JOB_TOKEN" "$CI_REGISTRY"
+  script:
+    - nerdctl build -t "$IMAGE_TAG" .
+    - nerdctl push "$IMAGE_TAG"
+    # Running containers works too:
+    # - nerdctl run --rm "$IMAGE_TAG" ./run-tests.sh
