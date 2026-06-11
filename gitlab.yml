@@ -1,0 +1,19 @@
+# BEFORE
+build:
+  image: docker:27
+  services: ["docker:27-dind"]
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+  script:
+    - docker build -t $IMG .
+    - docker push $IMG
+
+# AFTER
+build:
+  image: registry.example.com/group/nerdctl-rootless:latest
+  before_script:
+    - source /usr/local/bin/rootless-init.sh
+    - nerdctl login -u "$CI_REGISTRY_USER" -p "$CI_JOB_TOKEN" "$CI_REGISTRY"
+  script:
+    - nerdctl build -t $IMG .
+    - nerdctl push $IMG
