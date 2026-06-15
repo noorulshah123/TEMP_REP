@@ -1,0 +1,24 @@
+Subject: Action required: UAT sign-off for custom SageMaker image (production release)
+
+Hi [Domain Owner names],
+
+We have deployed the new custom SageMaker image to the UAT environment and are now seeking your sign-off before we proceed with the production release.
+
+We would appreciate your help validating that the image works as expected for your team's workflows. Could you please test the following in UAT and confirm they function correctly:
+
+- Launching JupyterLab and Code Editor spaces
+- Running both Python and R custom kernels
+- Any team-specific notebooks, libraries, or workflows you rely on day to day
+
+Environment details:
+- Environment: [UAT domain / URL]
+- Image / version: [image name and tag]
+- Access: [how to access, or note if existing access works]
+
+To keep us on track for the planned production date, could you please complete your validation and reply with your sign-off (or any issues found) by [date]? A simple "validated, approved to proceed" works, or let us know if anything needs attention.
+
+If it would help, I'm happy to set up a short walkthrough session. Please let me know.
+
+Thanks for your support,
+[Your name]
+[Team / contact]
