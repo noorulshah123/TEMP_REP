@@ -50,3 +50,25 @@ aws sagemaker describe-image-version --image-name $SM_IMAGE_NAME --region $REGIO
 aws sagemaker describe-image-version --image-name $SM_IMAGE_NAME --region $REGION \
   --query 'ContainerImage' --output text
 # the part after @sha256: should equal the digest from step 2
+
+
+
+
+ACCOUNT_ID="<account>"
+REGION="ap-southeast-2"
+REPO="sagemaker-distribution"
+
+# 1. Get the manifest of the Image Index (the soci_indexed artifact)
+MANIFEST=$(aws ecr batch-get-image --repository-name $REPO --region $REGION \
+  --image-ids imageTag=soci_indexed \
+  --query 'images[0].imageManifest' --output text)
+
+# 2. Put it back under the new tag 'dev' (same digest, new tag)
+aws ecr put-image --repository-name $REPO --region $REGION \
+  --image-tag dev \
+  --image-manifest "$MANIFEST"
+
+# 3. (optional) Remove the old soci_indexed tag — this only removes the TAG,
+#    not the underlying image, since 'dev' now points to the same digest
+aws ecr batch-delete-image --repository-name $REPO --region $REGION \
+  --image-ids imageTag=soci_indexed
