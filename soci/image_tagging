@@ -1,0 +1,8 @@
+def get_image_rsa(ecrclient, ecr_repo_name, ecr_tag, registryId):
+    imagelist = ecrclient.describe_images(registryId=registryId, repositoryName=ecr_repo_name)
+    for image in imagelist["imageDetails"]:
+        # SOCI conversion creates untagged artifacts (Soci Index + Image components)
+        # which have no 'imageTags' key — skip them so we only match the tagged Image Index
+        if ecr_tag in image.get("imageTags", []):
+            return image["imageDigest"]
+    return "Not found"
